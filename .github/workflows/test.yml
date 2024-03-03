@@ -1,0 +1,39 @@
+name: test
+
+on:
+  - push
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TZ: Asia/Tokyo
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            browser: chromium
+          - os: ubuntu-20.04
+            browser: firefox
+          - os: ubuntu-20.04
+            browser: webkit
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version-file: 'package.json'
+      - run: npm ci
+      - run: npm run build-storybook
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: nohup npx http-server storybook-static --port 6006 >stdout.log 2>stderr.log &
+      - run: >
+          curl -s --retry 60 --retry-delay 1 --retry-connrefused http://127.0.0.1:6006 >/dev/null &&
+          npx test-storybook --browsers ${{ matrix.browser }}
